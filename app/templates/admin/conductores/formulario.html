@@ -1,0 +1,165 @@
+{% extends 'admin/_layout.html' %} # es para extender el layout de la pagina de admin, para que tenga el mismo estilo y estructura que las demas paginas de admin
+{% block title %}{{ 'Editar conductor' if id_conductor is not none else 'Nuevo conductor' }} — S.A.D.E.{% endblock %} # es para definir el titulo de la pagina, que se mostrara en la pestaña del navegador y en el encabezado de la pagina
+{% block active_page %}conductores{% endblock %} # es para definir la pagina activa en el menu lateral, para que se muestre resaltada y se sepa en que pagina se encuentra el usuario
+{% set c = conductor or {} %} # es para definir una variable que contiene los datos del conductor, si no hay datos se define como un diccionario vacio, para poder acceder a los datos del conductor en el formulario sin que se genere un error si no hay datos
+{% set es_edicion = id_conductor is not none %} # es para definir una variable que indica si se esta editando un conductor o creando uno nuevo, si el id del conductor es diferente de none se esta editando, si es none se esta creando un nuevo conductor
+{% block admin_content %} # es para definir el contenido de la pagina, que se mostrara en el cuerpo de la pagina, dentro del layout de admin
+{% block title %}{{ 'Editar conductor' if es_edicion else 'Nuevo conductor' }} — S.A.D.E.{% endblock %}
+{% block active_page %}conductores{% endblock %}
+{% block admin_content %} 
+<p class="page-title mb-4">{{ 'Editar conductor' if es_edicion else 'Nuevo conductor' }}</p>
+
+<div class="row g-4"> # es para definir una fila con un espacio de 4 entre columnas, para que el formulario y el panel de ayuda se muestren en la misma fila y tengan un espacio entre ellos
+    <div class="col-lg-8">
+        <form
+            method="POST" # es para definir el metodo de envio del formulario, que sera POST para enviar los datos al servidor de manera segura y no mostrar los datos en la URL
+            action="{{ url_for('admin.conductores_editar', id_conductor=id_conductor) if es_edicion else url_for('admin.conductores_nuevo') }}"
+        >
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"> #
+            <div class="mb-3">
+                <label for="nombre" class="form-label">Nombre</label> # es 
+                <input # 
+                    type="text"
+                    class="form-control"
+                    id="nombre"
+                    name="nombre"
+                    value="{{ c.nombre }}"
+                    required
+                >
+            </div>
+            <div class="mb-3"> # 
+                <label for="telefono" class="form-label">Teléfono</label>
+                <input
+                    type="tel"
+                    class="form-control"
+                    id="telefono"
+                    name="telefono"
+                    value="{{ c.telefono }}"
+                    required
+                >
+            </div>
+            {% if not es_edicion %}
+            <div class="mb-3">
+                <label for="nombre_usuario" class="form-label">Nombre de usuario (cuenta de acceso)</label>
+                <input
+                    type="text"
+                    class="form-control"
+                    id="nombre_usuario"
+                    name="nombre_usuario"
+                    value="{{ c.nombre_usuario }}"
+                    required
+                >
+            </div>
+            <div class="mb-3"> # es para definir un margen inferior de 3 unidades, para que el campo de contraseña temporal tenga un espacio adecuado con respecto a los demas campos del formulario
+                <label for="contrasena" class="form-label">Contraseña temporal</label>
+                <input
+                    type="password"
+                    class="form-control"
+                    id="contrasena"
+                    name="contrasena"
+                    minlength="8"
+                    required
+                >
+                <div class="text-help mt-1">
+                    Mínimo 8 caracteres. El conductor podrá cambiarla después con
+                    "¿Olvidaste tu contraseña?".
+                </div>
+            </div>
+            {% endif %} # es para definir un bloque de codigo que se ejecuta solo si no se esta editando un conductor, es decir, si se esta creando uno nuevo. En este bloque se definen los campos de nombre de usuario y contraseña temporal, que son necesarios para crear la cuenta de acceso del conductor. Si se esta editando un conductor, estos campos no se muestran.
+            <div class="mb-3">
+                <label for="email" class="form-label">Correo electrónico (cuenta de acceso)</label>
+                <input
+                    type="email"
+                    class="form-control"
+                    id="email"
+                    name="email"
+                    value="{{ c.email }}"
+                    placeholder="correo@ejemplo.com"
+                    {{ 'required' if not es_edicion }}
+                >
+                <div class="text-help mt-1">
+                    {% if es_edicion %}
+                    Se usa para "¿Olvidaste tu contraseña?". Solo se guarda si este conductor ya
+                    tiene una cuenta de usuario vinculada.
+                    {% else %}
+                    Se usa para "¿Olvidaste tu contraseña?" de la cuenta que se creará junto con
+                    este conductor.
+                    {% endif %}
+                </div>
+            </div>
+            <div class="mb-3">
+                <label for="num_licencia" class="form-label">No. de licencia</label>
+                <input #  es para definir un campo de entrada de texto para el numero de licencia del conductor, con una etiqueta que indica que es obligatorio y se mostrara en el formulario
+                    type="text"
+                    class="form-control"
+                    id="num_licencia"
+                    name="num_licencia"
+                    value="{{ c.num_licencia }}"
+                    required
+                >
+            </div>
+            <div class="mb-3">
+                <label for="fecha_vencimiento_lic" class="form-label">Fecha de vencimiento de licencia</label>
+                <input
+                    type="date"
+                    class="form-control"
+                    id="fecha_vencimiento_lic"
+                    name="fecha_vencimiento_lic"
+                    value="{{ c.fecha_vencimiento_lic }}"
+                    required
+                >
+            </div>
+            <div class="alert alert-info mb-3" style="font-size: 11px;">
+                ℹ El sistema bloqueará automáticamente el registro de viajes si esta licencia
+                se encuentra vencida al momento del despacho.
+            </div>
+            <div class="mb-3"> # es para definir un margen inferior de 3 unidades, para que el campo de contacto de emergencia tenga un espacio adecuado con respecto a los demas campos del formulario
+                <label for="contacto_emergencia" class="form-label">Contacto de emergencia</label>
+                <input
+                    type="text"
+                    class="form-control"
+                    id="contacto_emergencia"
+                    name="contacto_emergencia"
+                    value="{{ c.contacto_emergencia }}"
+                    required
+                >
+            </div>
+            <div class="mb-3"> # es para definir un margen inferior de 3 unidades, para que el campo de telefono de emergencia tenga un espacio adecuado con respecto a los demas campos del formulario
+                <label for="tel_emergencia" class="form-label">Teléfono de emergencia</label>
+                <input
+                    type="tel"
+                    class="form-control"
+                    id="tel_emergencia"
+                    name="tel_emergencia"
+                    value="{{ c.tel_emergencia }}"
+                    required
+                >
+            </div>
+
+            <div class="d-flex gap-2"> # es para definir un contenedor flexible con un espacio de 2 entre elementos, para que los botones de guardar y cancelar se muestren uno al lado del otro con un espacio entre ellos
+                <button type="submit" class="btn btn-primary">
+                    {{ 'Guardar cambios' if es_edicion else 'Registrar conductor' }}
+                </button>
+                <a href="{{ url_for('admin.conductores_lista') }}" class="btn btn-outline-secondary">
+                    Cancelar
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <div class="col-lg-4"> # es para definir una columna de 4 unidades de ancho en pantallas grandes, para que el panel de ayuda se muestre al lado del formulario y tenga un ancho adecuado
+        <div class="help-panel">
+            <p class="help-panel-title mb-0">¿Por qué pedimos esto?</p>
+            <p>
+                La validación de licencia es una de las funcionalidades centrales de S.A.D.E.
+                El sistema compara automáticamente la fecha de vencimiento contra la fecha
+                actual antes de permitir cualquier salida a ruta.
+            </p>
+            <p>
+                El nombre de usuario y contraseña permiten que el conductor acceda desde su
+                propio teléfono.
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}

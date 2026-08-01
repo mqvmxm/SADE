@@ -29,4 +29,40 @@ class Usuario(db.Model, UserMixin):
 
     conductor = db.relationship("Conductor", backref=db.backref("usuarios", lazy=True))
 
+    __table_args__ = (
+        CheckConstraint(
+            "rol IN ('admin', 'conductor', 'mecanico')", name="ck_usuarios_rol"
+        ),
+    )
+
+#devuelve el identificador que flask-login guarda en la sesion
+    def get_id(self):
+        return str(self.id_usuario)
+
+#sobreescribe el default de usermixin para que una cuenta desactivada no pueda 
+#iniciar sesión
+    @property
+    def id_activate(self):
+        return self.activo
+
+#genera y guarda el hash de la contraseña 
+    def set_password(self, password):
+        self.contrasena = generate_password_hash(password)
+
+#valida credenciales del login haciendo la comparacion del hash
+    def check_password(self, password):
+        return check_password_hash(self.contrasena, password)
+
+#indica si el usuario tiene rol de administrador
+    def es_admin(self):
+        return self.rol == "admin"
+    
+#indica si el usuario tiene rol de conductor 
+    def es_conductor(self):
+        return self.rol == "conductor"
+
+#indica si el usuario tiene rol de mecánico
+    def es_mecanico(self):
+        return self.rol == "mecanico"
+
     

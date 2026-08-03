@@ -1,0 +1,249 @@
+{% extends 'admin/_layout.html' %}
+{% from 'admin/_stat_card.html' import stat_card %}
+
+{% block title %}Panel de administrador — S.A.D.E.{% endblock %}
+
+{% block active_page %}inicio{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* Alertas ya atendidas en "Alertas recientes": se mantienen en el panel
+       (no se ocultan) pero atenuadas, para que lo urgente resalte sin perder
+       el historial reciente de un vistazo. */
+    .alerta-card.atendida {
+        opacity: 0.55;
+    }
+
+    /* Aviso discreto de actualización disponible (polling cada 30s, ver
+       script al final de este template). Reutiliza el tono warning ya
+       existente en badge-status/--color-warning-bg en vez de un color nuevo. */
+    .barra-actualizacion {
+        display: none;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        background-color: var(--color-warning-bg);
+        color: var(--color-warning);
+        border-radius: 10px;
+        padding: 0.65rem 1rem;
+        margin-bottom: 1rem;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .barra-actualizacion.visible {
+        display: flex;
+    }
+
+    .barra-actualizacion-boton {
+        background: none;
+        border: 1px solid var(--color-warning);
+        color: var(--color-warning);
+        border-radius: 8px;
+        padding: 0.3rem 0.8rem;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+    .barra-actualizacion-boton:hover {
+        background-color: var(--color-warning);
+        color: #fff;
+    }
+</style>
+{% endblock %}
+
+{% block admin_content %}
+<div id="barra-actualizacion" class="barra-actualizacion">
+    <span>Hay actualizaciones nuevas</span>
+    <button type="button" id="boton-actualizar-ahora" class="barra-actualizacion-boton">
+        Actualizar ahora
+    </button>
+</div>
+
+<p class="page-title mb-1">Bienvenido, {{ current_user.nombre }}</p>
+<p class="text-help mb-4">Panel de administrador — S.A.D.E.</p>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        {{ stat_card('Operación normal', conteos.activo, 'Viajes activos sin incidentes', 'success') }}
+    </div>
+    <div class="col-md-3">
+        {{ stat_card('Retraso detectado', conteos.alerta, 'Viajes que superaron su ETA', 'warning') }}
+    </div>
+    <div class="col-md-3">
+        {{ stat_card('Emergencia activa', conteos.emergencia, 'Avisos de pánico sin cerrar', 'danger') }}
+    </div>
+    <div class="col-md-3">
+        {{ stat_card('Licencia vencida', conteos.licencia_vencida, 'Conductores con licencia expirada', 'neutral') }}
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-8">
+        <p class="section-subtitle mb-2">Viajes en curso</p>
+        {% if viajes_en_curso %}
+        <div class="table-responsive">
+            <table class="table table-striped align-middle">
+                <thead>
+                    <tr>
+                        <th>Estado</th>
+                        <th>Conductor</th>
+                        <th>Ruta</th>
+                        <th>ETA</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for viaje in viajes_en_curso %}
+                    <tr>
+                        <td>
+                            {% if viaje.estado == 'emergencia' %}
+                                <span class="badge-status danger">Emergencia</span>
+                            {% elif viaje.estado == 'alerta' %}
+                                <span class="badge-status warning">En alerta</span>
+                            {% else %}
+                                <span class="badge-status success">Activo</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ viaje.conductor.nombre }}</td>
+                        <td>{{ viaje.origen }} → {{ viaje.destino }}</td>
+                        <td>{{ viaje.eta.strftime('%d/%m/%Y %H:%M') }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted">No hay viajes en curso en este momento.</p>
+        {% endif %}
+    </div>
+
+    <div class="col-lg-4">
+        <p class="section-subtitle mb-2">Alertas recientes</p>
+        {% if alertas_recientes %}
+        <div class="d-flex flex-column gap-2">
+            {% for alerta in alertas_recientes %}
+            <div class="card p-3 alerta-card {{ 'atendida' if alerta.atendida }}">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="d-flex align-items-center gap-1">
+                        {% if alerta.tipo == 'retraso' %}
+                            <span class="badge-status warning">Retraso</span>
+                        {% elif alerta.tipo == 'panico' %}
+                            <span class="badge-status danger">Pánico</span>
+                        {% else %}
+                            <span class="badge-status danger">Licencia vencida</span>
+                        {% endif %}
+                        {% if alerta.atendida %}
+                            <span class="badge-status neutral">Atendida</span>
+                        {% endif %}
+                    </div>
+                    <span class="text-help">{{ alerta.generada_en.strftime('%d/%m/%Y %H:%M') }}</span>
+                </div>
+                <p class="mb-0 mt-2">{{ alerta.conductor.nombre }}</p>
+                <p class="text-help mb-0">{{ alerta.mensaje }}</p>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted">No hay alertas registradas todavía.</p>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    (function () {
+        var ESTADO_INICIAL = {
+            conteos: {{ conteos | tojson }},
+            alertas: [
+                {% for alerta in alertas_recientes %}
+                { id: {{ alerta.id_alerta }}, atendida: {{ alerta.atendida | tojson }} }{{ "," if not loop.last }}
+                {% endfor %}
+            ]
+        };
+
+        var barra = document.getElementById('barra-actualizacion');
+        var botonActualizar = document.getElementById('boton-actualizar-ahora');
+        var intervalId = null;
+
+        function idsOrdenados(lista) {
+            return lista.slice().sort(function (a, b) { return a - b; });
+        }
+
+        function atendidaPorId(alertas) {
+            var mapa = {};
+            alertas.forEach(function (alerta) {
+                mapa[alerta.id] = alerta.atendida;
+            });
+            return mapa;
+        }
+
+        function estadoCambio(estadoNuevo) {
+            var conteosPrevios = ESTADO_INICIAL.conteos;
+            var conteosNuevos = estadoNuevo.conteos;
+            for (var clave in conteosPrevios) {
+                if (conteosPrevios[clave] !== conteosNuevos[clave]) {
+                    return true;
+                }
+            }
+
+            var idsPrevios = idsOrdenados(ESTADO_INICIAL.alertas.map(function (a) { return a.id; }));
+            var idsNuevos = idsOrdenados(estadoNuevo.alertas.map(function (a) { return a.id; }));
+            if (idsPrevios.length !== idsNuevos.length) {
+                return true;
+            }
+            for (var i = 0; i < idsPrevios.length; i++) {
+                if (idsPrevios[i] !== idsNuevos[i]) {
+                    return true;
+                }
+            }
+
+            // Mismos ids visibles en ambos momentos: revisa si alguna de esas
+            // alertas cambió de atendida (ej. otro admin la marcó como
+            // atendida desde otra sesión) — eso no mueve conteos ni ids, así
+            // que sin esto quedaría invisible para el polling.
+            var atendidaPrevia = atendidaPorId(ESTADO_INICIAL.alertas);
+            var atendidaNueva = atendidaPorId(estadoNuevo.alertas);
+            for (var idAlerta in atendidaPrevia) {
+                if (atendidaPrevia[idAlerta] !== atendidaNueva[idAlerta]) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        function consultarEstado() {
+            fetch('{{ url_for("admin.dashboard_estado") }}')
+                .then(function (respuesta) {
+                    return respuesta.ok ? respuesta.json() : null;
+                })
+                .then(function (estadoNuevo) {
+                    if (estadoNuevo && estadoCambio(estadoNuevo)) {
+                        barra.classList.add('visible');
+                        detenerPolling();
+                    }
+                })
+                .catch(function () {
+                    // Fallo de red silencioso: se reintenta en el próximo ciclo,
+                    // sin interrumpir al administrador con un error visible.
+                });
+        }
+
+        function detenerPolling() {
+            if (intervalId !== null) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+        }
+
+        intervalId = setInterval(consultarEstado, 30000);
+
+        window.addEventListener('pagehide', detenerPolling);
+
+        botonActualizar.addEventListener('click', function () {
+            location.reload();
+        });
+    })();
+</script>
+{% endblock %}

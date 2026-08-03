@@ -1,0 +1,235 @@
+{% extends 'admin/_layout.html' %}
+
+{% set v = vehiculo or {} %}
+{% set es_edicion = id_vehiculo is not none %}
+
+{% block title %}{{ 'Editar vehículo' if es_edicion else 'Nuevo vehículo' }} — S.A.D.E.{% endblock %}
+
+{% block active_page %}vehiculos{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* Aviso inline de placa duplicada (ayuda de UX, ver script al final de
+       este formulario): mismo tono danger que ya usan badge-status/flash de
+       error, sin inventar un color nuevo. */
+    #aviso-placa-duplicada {
+        display: none;
+        color: var(--color-danger);
+        font-size: 10.5px;
+        margin-top: 0.35rem;
+    }
+
+    #aviso-placa-duplicada.visible {
+        display: block;
+    }
+</style>
+{% endblock %}
+
+{% block admin_content %}
+<p class="page-title mb-4">{{ 'Editar vehículo' if es_edicion else 'Nuevo vehículo' }}</p>
+
+<div class="row g-4">
+    <div class="col-lg-8">
+        <form
+            method="POST"
+            action="{{ url_for('admin.vehiculos_editar', id_vehiculo=id_vehiculo) if es_edicion else url_for('admin.vehiculos_nuevo') }}"
+        >
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="mb-3">
+                <label for="placas" class="form-label">Placas</label>
+                <input
+                    type="text"
+                    class="form-control"
+                    id="placas"
+                    name="placas"
+                    value="{{ v.placas }}"
+                    autocomplete="off"
+                    required
+                >
+                <p id="aviso-placa-duplicada">Ya existe un vehículo con esta placa.</p>
+            </div>
+            <div class="mb-3">
+                <label for="num_unidad" class="form-label">No. de unidad</label>
+                <input
+                    type="text"
+                    class="form-control"
+                    id="num_unidad"
+                    name="num_unidad"
+                    value="{{ v.num_unidad }}"
+                    required
+                >
+            </div>
+            <div class="mb-3">
+                <label for="marca" class="form-label">Marca</label>
+                <input
+                    type="text"
+                    class="form-control"
+                    id="marca"
+                    name="marca"
+                    value="{{ v.marca }}"
+                    required
+                >
+            </div>
+            <div class="mb-3">
+                <label for="modelo" class="form-label">Modelo</label>
+                <input
+                    type="text"
+                    class="form-control"
+                    id="modelo"
+                    name="modelo"
+                    value="{{ v.modelo }}"
+                    required
+                >
+            </div>
+            <div class="mb-3">
+                <label for="anio" class="form-label">Año</label>
+                <input
+                    type="number"
+                    class="form-control"
+                    id="anio"
+                    name="anio"
+                    value="{{ v.anio }}"
+                    required
+                >
+            </div>
+            <div class="mb-3">
+                <label for="num_serie" class="form-label">No. de serie</label>
+                <input
+                    type="text"
+                    class="form-control"
+                    id="num_serie"
+                    name="num_serie"
+                    value="{{ v.num_serie }}"
+                    required
+                >
+            </div>
+
+            {% if es_edicion %}
+            <div class="mb-3">
+                <label class="form-label">Estado</label>
+                {% if v.estado == 'en_ruta' %}
+                <div class="alert alert-success mb-0">
+                    Este vehículo está en ruta — el estado se actualizará
+                    automáticamente al finalizar el viaje activo.
+                </div>
+                {% else %}
+                <select class="form-select" id="estado" name="estado" required>
+                    <option value="disponible" {{ 'selected' if v.estado == 'disponible' }}>
+                        Disponible
+                    </option>
+                    <option value="en_taller" {{ 'selected' if v.estado == 'en_taller' }}>
+                        En taller
+                    </option>
+                </select>
+                {% endif %}
+            </div>
+            {% else %}
+            <div class="alert alert-success mb-3">
+                <strong>Disponible</strong>
+                <div style="font-size: 11px;">
+                    Todo vehículo nuevo inicia como disponible. El estado "En ruta" se asignará
+                    automáticamente cuando el vehículo tenga un viaje activo asignado por un
+                    conductor.
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary" id="boton-guardar-vehiculo">
+                    {{ 'Guardar cambios' if es_edicion else 'Registrar vehículo' }}
+                </button>
+                <a href="{{ url_for('admin.vehiculos_lista') }}" class="btn btn-outline-secondary">
+                    Cancelar
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="help-panel">
+            <p class="help-panel-title mb-0">Sobre el estado del vehículo</p>
+            <p>
+                El sistema administra tres estados posibles: Disponible, En taller y En ruta.
+            </p>
+            <p>
+                Solo Disponible y En taller pueden asignarse manualmente. El estado En ruta lo
+                determina el sistema automáticamente en cuanto existe un viaje activo para esa
+                unidad.
+            </p>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        // Ayuda de UX: avisa si la placa ya existe antes de enviar el
+        // formulario. NO es la validación real -esa sigue siendo el
+        // IntegrityError + rollback del backend al guardar (ver
+        // vehiculos_nuevo/vehiculos_editar en admin.py)-, así que un fallo o
+        // bloqueo de esta consulta nunca debe impedir enviar el formulario.
+        var campoPlacas = document.getElementById('placas');
+        var aviso = document.getElementById('aviso-placa-duplicada');
+        var botonGuardar = document.getElementById('boton-guardar-vehiculo');
+        var idVehiculoActual = {{ id_vehiculo | tojson }};
+        var temporizadorDebounce = null;
+        var idConsulta = 0;
+
+        function ocultarAviso() {
+            aviso.classList.remove('visible');
+            botonGuardar.disabled = false;
+        }
+
+        function mostrarAviso() {
+            aviso.classList.add('visible');
+            botonGuardar.disabled = true;
+        }
+
+        function consultarDisponibilidad() {
+            var placa = campoPlacas.value.trim();
+            if (!placa) {
+                ocultarAviso();
+                return;
+            }
+
+            idConsulta += 1;
+            var idEstaConsulta = idConsulta;
+
+            var url = new URL('{{ url_for("admin.vehiculos_placa_disponible") }}', window.location.origin);
+            url.searchParams.set('placa', placa);
+            if (idVehiculoActual !== null) {
+                url.searchParams.set('excluir', idVehiculoActual);
+            }
+
+            fetch(url)
+                .then(function (respuesta) { return respuesta.ok ? respuesta.json() : null; })
+                .then(function (resultado) {
+                    // Si el admin ya siguió escribiendo, esta respuesta quedó
+                    // obsoleta: se descarta para no pisar el estado actual
+                    // con el resultado de una placa que ya no es la vigente.
+                    if (!resultado || idEstaConsulta !== idConsulta) {
+                        return;
+                    }
+                    if (resultado.disponible) {
+                        ocultarAviso();
+                    } else {
+                        mostrarAviso();
+                    }
+                })
+                .catch(function () {
+                    // Sin conexión o error de red: no se bloquea el envío por
+                    // esto, el backend sigue siendo la validación real.
+                });
+        }
+
+        function consultarConDebounce() {
+            if (temporizadorDebounce) {
+                clearTimeout(temporizadorDebounce);
+            }
+            temporizadorDebounce = setTimeout(consultarDisponibilidad, 500);
+        }
+
+        campoPlacas.addEventListener('input', consultarConDebounce);
+        campoPlacas.addEventListener('blur', consultarDisponibilidad);
+    })();
+</script>
+{% endblock %}

@@ -1,0 +1,371 @@
+{% extends 'base.html' %}
+
+{% block title %}Panel de conductor — S.A.D.E.{% endblock %}
+
+{% block theme_init %}
+<script>
+    (function () {
+        var tema = localStorage.getItem('sade_tema_conductor') || 'claro';
+        if (tema === 'oscuro') {
+            document.documentElement.setAttribute('data-tema', 'oscuro');
+        }
+    })();
+</script>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    .status-card {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        border-radius: 12px;
+        padding: 0.85rem 1rem;
+    }
+
+    .status-card-success {
+        background-color: var(--color-success-bg);
+    }
+
+    .status-card-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background-color: var(--color-success);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 700;
+        flex-shrink: 0;
+    }
+
+    .status-card-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--color-text);
+    }
+
+    .status-card-subtitle {
+        font-size: 10.5px;
+        color: var(--color-text-secondary);
+    }
+
+    /* Estado de error del aviso silencioso: mismo tono de advertencia que
+       badge-status.warning, para que se distinga del texto normal de un
+       vistazo sin recurrir a sonidos ni alert(). */
+    #tarjeta-aviso-silencioso.aviso-silencioso-error {
+        background-color: var(--color-warning-bg);
+    }
+
+    #tarjeta-aviso-silencioso.aviso-silencioso-error #texto-aviso-silencioso,
+    #tarjeta-aviso-silencioso.aviso-silencioso-error #subtexto-aviso-silencioso {
+        color: var(--color-warning) !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="d-flex justify-content-between align-items-start mb-1">
+            <p class="page-title mb-0">Hola, {{ current_user.nombre }}</p>
+            <div class="d-flex align-items-center gap-2">
+                <button
+                    type="button"
+                    id="boton-tema"
+                    class="theme-toggle"
+                    title="Cambiar tema claro/oscuro"
+                    aria-label="Cambiar tema claro/oscuro"
+                >
+                    <span id="icono-tema">🌙</span>
+                </button>
+                <a href="{{ url_for('auth.logout') }}" class="logout-link">Cerrar sesión →</a>
+            </div>
+        </div>
+        <p class="text-help mb-4">
+            Panel de conductor · <a href="{{ url_for('conductor.historial') }}">Ver mi historial</a>
+        </p>
+
+        {% if not conductor.licencia_vigente() %}
+            <div class="card p-4">
+                <span class="badge-status danger mb-2" style="width: fit-content;">Licencia vencida</span>
+                <p class="mb-0">
+                    Tu licencia de conducir está vencida y no puedes iniciar un nuevo viaje.
+                    Contacta al administrador para regularizar tu situación.
+                </p>
+            </div>
+
+        {% elif viaje_activo %}
+            <div class="card p-4">
+                {% if viaje_activo.estado == 'emergencia' %}
+                    <span class="badge-status danger mb-3" style="width: fit-content;">Aviso de emergencia activado</span>
+                    <p class="mb-3">
+                        Se envió un aviso de emergencia con tu ubicación. Confirma tu llegada cuando estés a salvo.
+                    </p>
+                {% else %}
+                    <p class="section-subtitle mb-3">Viaje en curso</p>
+                {% endif %}
+                <dl class="row mb-4">
+                    <dt class="col-4 text-help">Origen</dt>
+                    <dd class="col-8">{{ viaje_activo.origen }}</dd>
+
+                    <dt class="col-4 text-help">Destino</dt>
+                    <dd class="col-8">{{ viaje_activo.destino }}</dd>
+
+                    <dt class="col-4 text-help">Salida</dt>
+                    <dd class="col-8">{{ viaje_activo.hora_salida.strftime('%d/%m/%Y %H:%M') }}</dd>
+
+                    <dt class="col-4 text-help">ETA</dt>
+                    <dd class="col-8">{{ viaje_activo.eta.strftime('%d/%m/%Y %H:%M') }}</dd>
+                </dl>
+
+                <form
+                    method="POST"
+                    action="{{ url_for('conductor.viajes_confirmar_llegada', id_viaje=viaje_activo.id_viaje) }}"
+                >
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-primary w-100">Confirmar llegada</button>
+                </form>
+            </div>
+
+            {% if viaje_activo.estado != 'emergencia' %}
+                <div class="status-card status-card-success mt-3">
+                    <span class="status-card-icon">✓</span>
+                    <div>
+                        <p class="status-card-title mb-0">Monitoreo automático activo</p>
+                        <p class="status-card-subtitle mb-0">
+                            El sistema revisa tu progreso cada minuto. No necesitas hacer nada mientras conduces.
+                        </p>
+                    </div>
+                </div>
+            {% endif %}
+
+            <p class="text-help mt-4 mb-2">¿Necesitas ayuda discretamente?</p>
+            <div
+                class="card p-3"
+                id="tarjeta-aviso-silencioso"
+                role="button"
+                tabindex="0"
+                style="cursor: pointer; user-select: none;"
+            >
+                <p class="mb-0" id="texto-aviso-silencioso" style="font-size: 12px; font-weight: 600;">
+                    Enviar aviso silencioso
+                </p>
+                <p class="text-help mb-0" id="subtexto-aviso-silencioso">
+                    Mantén presionado 3 seg · sin sonido ni aviso en pantalla
+                </p>
+            </div>
+
+            <script>
+                (function () {
+                    var tarjeta = document.getElementById('tarjeta-aviso-silencioso');
+                    var texto = document.getElementById('texto-aviso-silencioso');
+                    var subtexto = document.getElementById('subtexto-aviso-silencioso');
+                    var textoOriginal = texto.textContent;
+                    var subtextoOriginal = subtexto.textContent;
+                    var temporizador = null;
+
+                    function iniciarConteo() {
+                        cancelarConteo();
+                        temporizador = setTimeout(activarEmergencia, 3000);
+                    }
+
+                    function cancelarConteo() {
+                        if (temporizador) {
+                            clearTimeout(temporizador);
+                            temporizador = null;
+                        }
+                    }
+
+                    function restaurarTexto() {
+                        texto.textContent = textoOriginal;
+                        subtexto.textContent = subtextoOriginal;
+                        tarjeta.classList.remove('aviso-silencioso-error');
+                    }
+
+                    function mostrarConfirmacion() {
+                        tarjeta.classList.remove('aviso-silencioso-error');
+                        texto.textContent = 'Aviso enviado';
+                        subtexto.textContent = '';
+                        setTimeout(restaurarTexto, 4000);
+                    }
+
+                    function mostrarError() {
+                        tarjeta.classList.add('aviso-silencioso-error');
+                        texto.textContent = 'No se pudo enviar';
+                        subtexto.textContent = 'Intenta de nuevo';
+                        setTimeout(restaurarTexto, 4000);
+                    }
+
+                    function enviarEmergencia(latitud, longitud) {
+                        var datos = new FormData();
+                        if (latitud !== null && longitud !== null) {
+                            datos.append('latitud', latitud);
+                            datos.append('longitud', longitud);
+                        }
+
+                        var metaCsrf = document.querySelector('meta[name="csrf-token"]');
+
+                        fetch('{{ url_for("emergencia.activar") }}', {
+                            method: 'POST',
+                            headers: {
+                                'X-CSRFToken': metaCsrf ? metaCsrf.content : '',
+                            },
+                            body: datos,
+                        })
+                            .then(function (respuesta) {
+                                if (respuesta.ok) {
+                                    mostrarConfirmacion();
+                                } else {
+                                    mostrarError();
+                                }
+                            })
+                            .catch(function () {
+                                mostrarError();
+                            });
+                    }
+
+                    function activarEmergencia() {
+                        temporizador = null;
+
+                        if (!navigator.geolocation) {
+                            // Sin soporte de geolocalización: se manda el aviso
+                            // igual, sin coordenadas, en vez de no hacer nada.
+                            enviarEmergencia(null, null);
+                            return;
+                        }
+
+                        navigator.geolocation.getCurrentPosition(
+                            function (posicion) {
+                                enviarEmergencia(posicion.coords.latitude, posicion.coords.longitude);
+                            },
+                            function () {
+                                // Permiso denegado, timeout o falla de GPS: el
+                                // aviso se manda igual, sin coordenadas — perder
+                                // la ubicación nunca debe impedir pedir ayuda.
+                                enviarEmergencia(null, null);
+                            },
+                            { timeout: 5000 }
+                        );
+                    }
+
+                    var TECLAS_ACTIVACION = ['Enter', ' ', 'Spacebar'];
+                    var manteniendoTecla = false;
+
+                    function manejarKeydown(evento) {
+                        if (TECLAS_ACTIVACION.indexOf(evento.key) === -1) {
+                            return;
+                        }
+                        evento.preventDefault();
+                        // Los eventos keydown se repiten mientras la tecla sigue
+                        // presionada; sin esta bandera, iniciarConteo() se
+                        // reiniciaría en cada repetición y el temporizador de
+                        // 3 segundos nunca llegaría a completarse.
+                        if (manteniendoTecla) {
+                            return;
+                        }
+                        manteniendoTecla = true;
+                        iniciarConteo();
+                    }
+
+                    function manejarKeyup(evento) {
+                        if (TECLAS_ACTIVACION.indexOf(evento.key) === -1) {
+                            return;
+                        }
+                        manteniendoTecla = false;
+                        cancelarConteo();
+                    }
+
+                    tarjeta.addEventListener('mousedown', iniciarConteo);
+                    tarjeta.addEventListener('touchstart', iniciarConteo);
+                    tarjeta.addEventListener('mouseup', cancelarConteo);
+                    tarjeta.addEventListener('mouseleave', cancelarConteo);
+                    tarjeta.addEventListener('touchend', cancelarConteo);
+                    tarjeta.addEventListener('touchcancel', cancelarConteo);
+                    tarjeta.addEventListener('keydown', manejarKeydown);
+                    tarjeta.addEventListener('keyup', manejarKeyup);
+                })();
+            </script>
+
+        {% else %}
+            <div class="status-card status-card-success mb-3">
+                <span class="status-card-icon">✓</span>
+                <div>
+                    <p class="status-card-title mb-0">Licencia vigente</p>
+                    <p class="status-card-subtitle mb-0">
+                        Vence el {{ conductor.fecha_vencimiento_lic.strftime('%d/%m/%Y') }}
+                    </p>
+                </div>
+            </div>
+
+            <div class="card p-4">
+                <p class="section-subtitle mb-3">Registrar salida</p>
+                <form method="POST" action="{{ url_for('conductor.viajes_nuevo') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="mb-3">
+                        <label for="origen" class="form-label">Origen</label>
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="origen"
+                            name="origen"
+                            required
+                            autofocus
+                        >
+                    </div>
+                    <div class="mb-3">
+                        <label for="destino" class="form-label">Destino</label>
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="destino"
+                            name="destino"
+                            required
+                        >
+                    </div>
+                    <div class="mb-3">
+                        <label for="eta" class="form-label">Hora estimada de llegada</label>
+                        <input
+                            type="datetime-local"
+                            class="form-control"
+                            id="eta"
+                            name="eta"
+                            required
+                        >
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Iniciar viaje</button>
+                </form>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    (function () {
+        var CLAVE_TEMA = 'sade_tema_conductor';
+        var boton = document.getElementById('boton-tema');
+        var icono = document.getElementById('icono-tema');
+
+        function actualizarIcono() {
+            var oscuro = document.documentElement.getAttribute('data-tema') === 'oscuro';
+            icono.textContent = oscuro ? '☀️' : '🌙';
+        }
+
+        actualizarIcono();
+
+        boton.addEventListener('click', function () {
+            var oscuroActivo = document.documentElement.getAttribute('data-tema') === 'oscuro';
+            if (oscuroActivo) {
+                document.documentElement.removeAttribute('data-tema');
+                localStorage.setItem(CLAVE_TEMA, 'claro');
+            } else {
+                document.documentElement.setAttribute('data-tema', 'oscuro');
+                localStorage.setItem(CLAVE_TEMA, 'oscuro');
+            }
+            actualizarIcono();
+        });
+    })();
+</script>
+{% endblock %}

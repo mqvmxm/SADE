@@ -347,3 +347,172 @@ def conductores_lista():
 @admin.route("/conductores/nuevo", methods=["GET", "POST"])
 @admin_required
 def conductores_nuevo():
+
+
+
+
+
+    if request.method == "POST":
+        datos conductor = _datos_conductor_desde_formulario()
+        if _datos_conductor is None:
+            return render_template(
+                "admin/conductores/formulario.html", conductor=request.form,id_conductor=None
+            )
+        
+        _datos_cuenta= _datos_cuenta_nueva_desde_formuario()
+        if datos_cuenta is None:
+            return render_template(
+                "admin/conductores/formulario.html", conductor=request.form,id_conductor=None
+            )
+        
+        conductor=Conductor(**_datos_conductor)
+        usuario = Usuario(
+            nombre=_datos_conductor
+            nombre_usuario=datos_cuenta["nombre_usuario"],
+            email=datos_cuenta["email"],
+            rol="conductor",
+            conductor=conductor,
+        )
+        usuario.set_password(datos_cuenta["contraseña"])
+
+        try:
+            db.session.add(conductor)
+            db.session.add(usuario)
+            db.session.add.commit()
+        except IntegrityError:
+            db.sesion.rollback()
+            if Conductor.query.filter_by(num_licencia=_datos_conductor["num_licencia"]).first():
+               flash(
+                    f"Ya existe un conductor con el número de licencia "{datos_conductor['num_licencia']}'.",
+                    "error",
+               ) 
+            elif Usuario.query.filter_by(nombre_usuario=datos_cuenta["nombre_usuario"]).first():
+                fash(
+                    f"Ya existe una cuenta con el nombre de usuario '{datos_cuenta['nombre_usuario']}'.",
+                    "error"
+                )
+            else:
+                flash("No se pudo registrar el conductor. Intenta de nuevo.","error")
+            return render_template(
+                "admin/conductores/formulario.html", conductor=request.form, id_conductor=None
+            )
+        
+        bitacora=Bitacora(
+            id_usuario=current_user.id_usuario,
+            accion="alta_cuenta_conductor",
+            descripcion=(
+                f"Alta de conductor '{conductor.nombre}' con cuenta de usuario "
+                f"'{usuario.nombre_usuario}' por {current_user.nombre}."   
+            ),
+            tabla_afectada="usuarios",
+            registro_id=usuario.id_usuario,
+        )
+        db.session.add(bitacora)
+        db.session.commit()
+
+        flash(
+            f"Conductor '{conductor.nombre}' y su cuenta de acceso fueron registrados correctamente.",
+            "success",
+        )
+        return redirect(url_for("admin.conductores_lista"))
+
+    return render_template("admin/conductores/formulario.html", conductor=None, id_conductores=None)
+
+
+@admin.route("/conductores/<int:id_conductor>/editar", methods=["GET", "POST"])
+@admin_required
+def conductores_editar(id_conductor):
+
+    conductor = Conductor.query.get_or_404(id_conductor)
+
+    if request.method == "POST":
+        datos = _datos_conductor_desde_formulario()
+        if datos is None:
+            return render_template(
+                "admin/conductores/formulario.html",
+                conductor=request.form,
+                id_conductor=id_conductor,
+            )
+
+        for campo, valor in datos.items():
+            setattr(conductor, campo, valor)
+
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash(
+                f"Ya existe un conductor con el numero de licencia '{datos['num_licencia']}'.",
+                "error",
+            )
+            return render_template(
+                "admin/conductores/formulario.html",
+                conductor=request.form,
+                id_conductor=id_conductor,
+            )
+
+        _guardar_email_cuenta(conductor.request.form.get("email", "").strip())
+
+        flash(f"Conductor ' {conductor.nombre}' actualizado correctamente.", "success")
+        return redirect(url_for("admin.conductores_lista"))
+
+    returnrender_template(
+        "admin/conductores/formulario.html",
+        conductor=_conductor_para_formulario(conductor),
+        id_conductor=id_conductor,
+    )
+
+
+@admin.route("/mecanicos")
+@admin_required
+def mecanicos_lista():
+
+
+
+
+
+    mecanicos=Usuario.query.filter_by(rol="mecanico").order_by(Usuario.nombre).all()
+    returnrender_template("admin/mecanicos/lista.html",mecanicos=mecanicos)
+
+
+@admin.route("/mecanicos/nuevo", methods={"GET", "POST"})
+@admin_required
+def mecanicos_nuevo():
+
+
+
+
+    if request.method == "POST":
+        datos_cuenta = _datos_cuenta_mecanico_desde_formulario()
+        if datos_cuenta is None:
+            return render_template("admin/mecanicos/formulario.html",mecanico=request.form)
+
+        usuario= Usuario(
+            nombre=datos_cuenta["nombre"],
+            nombre_usuario=datos_cuenta["nombre_usuario"],
+            email=datos_cuenta["email"],
+            rol="mecanico",
+        )
+        usuario.set_password(datos_cuenta[contrasena])
+
+        try:
+            db.session.add(usuario)
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash(
+                f"Ya existe una cuenta con el nombre de usuario ' {datos_cuenta['nombre_usuario']}'.",
+                "error",
+            )
+            return render_template("admin/mecanicos/formulario.html", mecanico=requesto.form)
+
+        bitacora= Bitacora(
+            id_usuario=current_user.id_usuario,
+            accion="alta_cuenta_mecanico",
+            descripcion=(
+                f"Alta de cuenta de mecánico '{usuario.nombre}'(usuario "
+                f"'{usuario.nombre_usuario}') por {current_user.nombre}."
+            ),
+            tabla_afectada="usuarios",
+            registro_id=usuario.id_usuario,
+        )
